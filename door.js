@@ -11,9 +11,15 @@
   var API = 'https://api.github.com/gists/';
   var RAW = 'https://gist.githubusercontent.com/raw/';
 
+  // # 後面：Gist 代號；再加 &go 代表「從主畫面打開」，讀到網址就直接跳。
+  // 在 Safari 直接打開（沒有 &go）不跳，讓你有時間按「加入主畫面」。
   function parseHash(hash) {
-    var id = String(hash || '').replace(/^#/, '').trim().toLowerCase();
+    var id = String(hash || '').replace(/^#/, '').split('&')[0].trim().toLowerCase();
     return GIST.test(id) ? id : null;
+  }
+
+  function wantsGo(hash) {
+    return String(hash || '').replace(/^#/, '').split('&').slice(1).indexOf('go') !== -1;
   }
 
   // door.json → { url, online, updated }；不合規矩就回 null
@@ -85,6 +91,11 @@
       return;
     }
     $('gist').href = 'https://gist.github.com/' + id;
+    var go = wantsGo(root.location.hash) || root.navigator.standalone === true;
+    if (!go) {
+      // 網址列換成帶 &go 的版本：這時按「加入主畫面」存下的就是會自動跳的網址
+      try { root.history.replaceState(null, '', '#' + id + '&go'); } catch (e) { /* 舊瀏覽器就算了 */ }
+    }
 
     load(id).then(function (data) {
       var target = pickTarget(data);
@@ -98,8 +109,14 @@
       reveal('go');
       if (target.online) {
         if (stamp) { $('when').textContent = '網址更新於 ' + stamp; reveal('when'); }
-        show('正在打開工作室…', '沒有自動跳過去的話，按下面的按鈕。');
-        root.location.replace(target.url);
+        if (go) {
+          show('正在打開工作室…', '沒有自動跳過去的話，按下面的按鈕。');
+          root.location.replace(target.url);
+          return;
+        }
+        show('工作室開著', '按下面的按鈕打開。');
+        reveal('hint');
+        $('go').addEventListener('click', function (e) { e.preventDefault(); root.location.replace(target.url); });
         return;
       }
       $('go').textContent = '還是打開上次的網址';
@@ -118,7 +135,7 @@
   }
 
   if (typeof module === 'object' && module.exports) {
-    module.exports = { parseHash: parseHash, pickTarget: pickTarget, fromApi: fromApi, when: when, TUNNEL: TUNNEL };
+    module.exports = { parseHash: parseHash, wantsGo: wantsGo, pickTarget: pickTarget, fromApi: fromApi, when: when, TUNNEL: TUNNEL };
   } else if (root.document) {
     main();
   }
